@@ -37,12 +37,12 @@ public class Program
             .OrderBy(group => group.Key)
             .ToList();
 
+        Console.WriteLine("Log counts per minute:");
         foreach (var bin in binnedLogs)
         {
             int count = bin.Count();
             Console.WriteLine($"{bin.Key:yyyy-MM-dd HH:mm}: {count} logs");
 
-            // If there are more than 3 logs in a minute, we may have a traffic spike
             if (count > 3)
             {
                 Console.WriteLine($"Potential traffic spike at {bin.Key:yyyy-MM-dd HH:mm}");
