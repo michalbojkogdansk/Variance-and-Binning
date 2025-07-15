@@ -46,14 +46,16 @@ public class Program
         var equalWidthBins = logs.GroupBy(log =>
         {
             double minutesFromStart = (log.Timestamp - minTime).TotalMinutes;
-            int binIndex = (int)(minutesFromStart / binWidth); // Which bin this log belongs to
+            int binIndex = (int)(minutesFromStart / binWidth);
+            if (binIndex >= numberOfBins) binIndex = numberOfBins - 1;
             return binIndex;
         }).OrderBy(b => b.Key).ToList();
 
-        foreach (var bin in equalWidthBins.OrderBy(b => b.Key))
-        {
-            Console.WriteLine($"Bin {bin.Key}: {bin.Count()} logs");
-        }
+        var ewCounts = equalWidthBins.Select(b => b.Count()).ToList();
+        PrintBinCounts(ewCounts);
+        variances["Equal Width"] = CalculateVariance(ewCounts);
+        entropyScores["Equal Width"] = CalculateEntropy(ewCounts);
+        balanceRatios["Equal Width"] = CalculateBalanceRatio(ewCounts);
 
         // === Equal Frequency Binning ===
         Console.WriteLine("\n=== Equal Frequency (Quantile) Binning ===");
@@ -63,11 +65,18 @@ public class Program
 
         for (int i = 0; i < numberOfBins; i++)
         {
-            var binLogs = sortedLogs.Skip(i * binSize).Take(binSize).ToList();
+            var binLogs = (i == numberOfBins - 1)
+                ? sortedLogs.Skip(i * binSize).ToList()
+                : sortedLogs.Skip(i * binSize).Take(binSize).ToList();
+
+            efCounts.Add(binLogs.Count);
             DateTime binStart = binLogs.First().Timestamp;
             DateTime binEnd = binLogs.Last().Timestamp;
             Console.WriteLine($"Bin {i + 1} [{binStart:HH:mm:ss} - {binEnd:HH:mm:ss}]: {binLogs.Count} logs");
         }
+        variances["Equal Frequency"] = CalculateVariance(efCounts);
+        entropyScores["Equal Frequency"] = CalculateEntropy(efCounts);
+        balanceRatios["Equal Frequency"] = CalculateBalanceRatio(efCounts);
 
         // === Business Domain-Based Binning ===
         Console.WriteLine("\n=== Business Domain-Based Binning ===");
@@ -85,6 +94,71 @@ public class Program
         foreach (var bin in domainBins)
         {
             Console.WriteLine($"{bin.Key}: {bin.Count()} logs");
+        }
+        variances["Business Domain"] = CalculateVariance(bdCounts);
+        entropyScores["Business Domain"] = CalculateEntropy(bdCounts);
+        balanceRatios["Business Domain"] = CalculateBalanceRatio(bdCounts);
+
+        // === Expanded Summary and Best Method ===
+        Console.WriteLine("\n=== Expanded Metrics Analysis ===");
+        var compositeScores = new Dictionary<string, double>();
+
+        foreach (var method in variances.Keys)
+        {
+            double variance = variances[method];
+            double entropy = entropyScores[method];
+            double balanceRatio = balanceRatios[method];
+
+            double compositeScore = variance + entropy + balanceRatio; // simple sum
+            compositeScores[method] = compositeScore;
+
+            Console.WriteLine($"{method}: variance = {variance:F2}, entropy = {entropy:F2}, balance ratio = {balanceRatio:F2}, composite score = {compositeScore:F2}");
+        }
+
+        var bestComposite = compositeScores.OrderBy(kv => kv.Value).First();
+        Console.WriteLine($"\nSuggested Best Binning Method (composite score): {bestComposite.Key}");
+    }
+
+    // calculate variance
+    public static double CalculateVariance(List<int> counts)
+    {
+        if (counts.Count == 0) return 0;
+        double mean = counts.Average();
+        double variance = counts.Select(c => Math.Pow(c - mean, 2)).Average();
+        return variance;
+    }
+
+    // calculate entropy
+    public static double CalculateEntropy(List<int> counts)
+    {
+        int total = counts.Sum();
+        if (total == 0) return 0;
+
+        double entropy = 0.0;
+        foreach (var count in counts)
+        {
+            if (count == 0) continue;
+            double p = (double)count / total;
+            entropy -= p * Math.Log(p, 2);
+        }
+        return entropy;
+    }
+
+    // calculate balance ratio (max/min)
+    public static double CalculateBalanceRatio(List<int> counts)
+    {
+        if (counts.Count == 0) return 0;
+        int max = counts.Max();
+        int min = counts.Min() == 0 ? 1 : counts.Min(); // avoid division by zero
+        return (double)max / min;
+    }
+
+    // print bin counts
+    public static void PrintBinCounts(List<int> counts)
+    {
+        for (int i = 0; i < counts.Count; i++)
+        {
+            Console.WriteLine($"Bin {i}: {counts[i]} logs");
         }
     }
 }
